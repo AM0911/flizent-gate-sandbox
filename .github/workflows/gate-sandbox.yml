@@ -1,0 +1,61 @@
+name: gate-sandbox
+
+# Manual runs only. Nothing here deploys, reads secrets, or changes anything
+# outside this run: every step is an echo, plus one short wait.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "single = one gated job; matrix = two gated jobs (alpha, beta)"
+        type: choice
+        options: [single, matrix]
+        default: single
+        required: true
+
+# Read-only repository token; no other permission.
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Identify this run and attempt
+        run: |
+          echo "mode=${{ inputs.mode }}"
+          echo "run_id=${{ github.run_id }} run_number=${{ github.run_number }} run_attempt=${{ github.run_attempt }}"
+      - name: Short wait (window to observe a re-run before the gated job asks for approval)
+        run: sleep 30
+
+  deploy:
+    name: deploy (single)
+    if: ${{ inputs.mode == 'single' }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: gate-sandbox
+    steps:
+      - name: Echo only — nothing is deployed
+        run: |
+          echo "gated job released: deploy (single)"
+          echo "run_id=${{ github.run_id }} run_attempt=${{ github.run_attempt }} environment=gate-sandbox"
+
+  deploy-matrix:
+    name: deploy (${{ matrix.target }})
+    if: ${{ inputs.mode == 'matrix' }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: gate-sandbox
+    strategy:
+      # Each matrix job stands on its own: one job's result never cancels the other.
+      fail-fast: false
+      matrix:
+        target: [alpha, beta]
+    steps:
+      - name: Echo only — nothing is deployed
+        run: |
+          echo "gated job released: deploy (${{ matrix.target }})"
+          echo "run_id=${{ github.run_id }} run_attempt=${{ github.run_attempt }} target=${{ matrix.target }} environment=gate-sandbox"
